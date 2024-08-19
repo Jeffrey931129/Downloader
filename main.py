@@ -1,4 +1,5 @@
 import yt_dlp 
+import json
 import os
 import time
 import ctypes
@@ -12,6 +13,8 @@ import logging
 # 設置 DPI 感知
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
 scale_factor = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
+
+cookie_file = "cookie.txt"
 
 # 設置 logging 基本配置
 # logging.basicConfig(filename='output.log', level=logging.DEBUG, format='[%(levelname)s] %(message)s (%(asctime)s)')
@@ -34,6 +37,7 @@ def get_ydl_opts(format) :
             'format' : 'bestaudio[ext=m4a]/bestaudio',
             'outtmpl' : f'{path_entry.get()}/%(title)s.%(ext)s',
             'ffmpeg_location': 'ffmpeg/bin/ffmpeg.exe',
+            'cookiefile': cookie_file,
             'http_headers' : {
                 'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             },
@@ -49,6 +53,7 @@ def get_ydl_opts(format) :
             'format' : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',  
             'outtmpl' : f'{path_entry.get()}/%(title)s.%(ext)s', 
             'ffmpeg_location' : 'ffmpeg/bin/ffmpeg.exe',
+            'cookiefile': cookie_file,
             'http_headers' : {
                 'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             },
@@ -66,12 +71,31 @@ def download_video(url, format) :
         info = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
         if 'entries' in info :
             titles = [entry['title'] for entry in info['entries']]
-        else:
-            titles = [info['title']]
-        
-        for title in titles :
+            for title in titles :
+                target_file = f"{output_path}/{title}.{format}"
+                # 檢查目標檔案是否存在
+                if os.path.exists(target_file) :
+                    choice = messagebox.askyesno("檔案已存在", f"檔案 '{title}.{format}' 已存在，是否覆蓋？")
+                    if not choice :
+                        result_label.config(text="取消下載")
+                        return
+                    else : 
+                        os.remove(target_file)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl :
+                ydl.download([url])
+                for title in titles :
+                    target_file = f"{output_path}/{title}.{format}"
+                    if format == 'mp3' :
+                        audio = AudioSegment.from_mp3(target_file)      # ffmpeg 有關?
+                        adjusted_audio = audio.apply_gain(-16.33854565016167 - audio.dBFS)  
+                        adjusted_audio.export(target_file, format="mp3")
+                    os.utime(target_file, (time.time(), time.time()))
+                result_label.config(text="下載成功")
+        else :
+            title = info['title']
             target_file = f"{output_path}/{title}.{format}"
-            # 檢查目標檔案是否存在
+            with open("test.txt", 'w') as file :
+                file.write(target_file)
             if os.path.exists(target_file) :
                 choice = messagebox.askyesno("檔案已存在", f"檔案 '{title}.{format}' 已存在，是否覆蓋？")
                 if not choice :
@@ -79,17 +103,14 @@ def download_video(url, format) :
                     return
                 else : 
                     os.remove(target_file)
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl :
-            ydl.download([url])
-            for title in titles :
-                target_file = f"{output_path}/{title}.{format}"
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl :
+                ydl.download([url])
                 if format == 'mp3' :
                     audio = AudioSegment.from_mp3(target_file)      # ffmpeg 有關?
                     adjusted_audio = audio.apply_gain(-16.33854565016167 - audio.dBFS)  
                     adjusted_audio.export(target_file, format="mp3")
                 os.utime(target_file, (time.time(), time.time()))
-            result_label.config(text="下載成功")
+                result_label.config(text="下載成功")
     except :
         result_label.config(text="下載失敗")
 
