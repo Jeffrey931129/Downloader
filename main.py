@@ -1,43 +1,42 @@
 import yt_dlp 
-import json
 import os
+import json
+import shutil
 import time
+from datetime import datetime
 import ctypes
 import threading
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import tkinter.font as tkFont
 from pydub import AudioSegment
-import logging
 
 # 設置 DPI 感知
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
 scale_factor = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
-
-cookie_file = "cookie.txt"
-
-# 設置 logging 基本配置
-# logging.basicConfig(filename='output.log', level=logging.DEBUG, format='[%(levelname)s] %(message)s (%(asctime)s)')
+AudioSegment.ffmpeg = "ffmpeg/bin/ffmpeg.exe"
+cookie_file = "cookie.txt"          # ?
 
 # 更新進度的回調函數
 def progress_hook(d) :
     if d['status'] == 'downloading' :
-        percentage = d['_percent_str']
-        idx = percentage.find('%')
-        if idx != -1 :
-            # 去掉 '%' 符號後面空格開始的部分，以及 '%' 符號前面空格以前的部分
-            clean_percentage = percentage[idx-5 : idx+1]
-            result_label.config(text=f"下載進度 : {clean_percentage}")
-    elif d['status'] == 'finished' :
-        result_label.config(text="處理中...")
+        # with open("test.txt", 'a') as file :          # Debug
+        #     json.dump(d, file, indent=4)
+        #     file.write("\n")
+        total_bytes = d.get('total_bytes')
+        total_fragment = d.get('fragment_count')
+        if total_bytes :
+            result_label.config(text=f"下載進度 : {(d['downloaded_bytes'] / total_bytes * 100):.2f}%")
+        elif total_fragment :
+            result_label.config(text=f"下載進度 : {(d['fragment_index'] / total_fragment * 100):.2f}%")
 
-def get_ydl_opts(format) :
+def get_ydl_opts(output_path, dir_name, format) :
     if format == 'mp3' :
         return {
             'format' : 'bestaudio[ext=m4a]/bestaudio',
-            'outtmpl' : f'{path_entry.get()}/%(title)s.%(ext)s',
+            'outtmpl' : f'{output_path}/{dir_name}/%(title)s.%(ext)s',
             'ffmpeg_location': 'ffmpeg/bin/ffmpeg.exe',
-            'cookiefile': cookie_file,
+            # 'cookiefile': cookie_file,            # 需要時看看他的錯誤訊息，然後依此偵測抓取新的 cookie (for future)
             'http_headers' : {
                 'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             },
@@ -51,9 +50,9 @@ def get_ydl_opts(format) :
     else :
         return {
             'format' : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',  
-            'outtmpl' : f'{path_entry.get()}/%(title)s.%(ext)s', 
+            'outtmpl' : f'{output_path}/{dir_name}/%(title)s.%(ext)s', 
             'ffmpeg_location' : 'ffmpeg/bin/ffmpeg.exe',
-            'cookiefile': cookie_file,
+            # 'cookiefile': cookie_file,
             'http_headers' : {
                 'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             },
@@ -66,52 +65,23 @@ def get_ydl_opts(format) :
 
 def download_video(url, format) :
     try :
-        ydl_opts = get_ydl_opts(format)
+        dir_name = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H-%M-%S')    # 以時間作為資料夾名稱
         output_path = path_entry.get()
-        info = yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=False)
-        if 'entries' in info :
-            titles = [entry['title'] for entry in info['entries']]
-            for title in titles :
-                target_file = f"{output_path}/{title}.{format}"
-                # 檢查目標檔案是否存在
-                if os.path.exists(target_file) :
-                    choice = messagebox.askyesno("檔案已存在", f"檔案 '{title}.{format}' 已存在，是否覆蓋？")
-                    if not choice :
-                        result_label.config(text="取消下載")
-                        return
-                    else : 
-                        os.remove(target_file)
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl :
-                ydl.download([url])
-                for title in titles :
-                    target_file = f"{output_path}/{title}.{format}"
-                    if format == 'mp3' :
-                        audio = AudioSegment.from_mp3(target_file)      # ffmpeg 有關?
-                        adjusted_audio = audio.apply_gain(-16.33854565016167 - audio.dBFS)  
-                        adjusted_audio.export(target_file, format="mp3")
-                    os.utime(target_file, (time.time(), time.time()))
-                result_label.config(text="下載成功")
-        else :
-            title = info['title']
-            target_file = f"{output_path}/{title}.{format}"
-            with open("test.txt", 'w') as file :
-                file.write(target_file)
-            if os.path.exists(target_file) :
-                choice = messagebox.askyesno("檔案已存在", f"檔案 '{title}.{format}' 已存在，是否覆蓋？")
-                if not choice :
-                    result_label.config(text="取消下載")
-                    return
-                else : 
-                    os.remove(target_file)
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl :
-                ydl.download([url])
+        os.makedirs(f"{output_path}/{dir_name}", exist_ok=True)
+        ydl_opts = get_ydl_opts(output_path, dir_name, format)
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl :
+            ydl.download([url])
+            result_label.config(text="處理中...")
+            for filename in os.listdir(f"{output_path}/{dir_name}") :
                 if format == 'mp3' :
-                    audio = AudioSegment.from_mp3(target_file)      # ffmpeg 有關?
+                    audio = AudioSegment.from_mp3(f"{output_path}/{dir_name}/{filename}")     # 與 ffmpeg 有關?
                     adjusted_audio = audio.apply_gain(-16.33854565016167 - audio.dBFS)  
-                    adjusted_audio.export(target_file, format="mp3")
-                os.utime(target_file, (time.time(), time.time()))
-                result_label.config(text="下載成功")
-    except :
+                    adjusted_audio.export(f"{output_path}/{dir_name}/{filename}", format="mp3")
+                os.utime(f"{output_path}/{dir_name}/{filename}", (time.time(), time.time()))
+                shutil.move(f"{output_path}/{dir_name}/{filename}", f"{output_path}/{filename}")
+            shutil.rmtree(f"{output_path}/{dir_name}")
+            result_label.config(text="下載成功")
+    except Exception as exception :
         result_label.config(text="下載失敗")
 
 def on_select_directory() :
@@ -140,6 +110,7 @@ root = tk.Tk()
 root.title("YouTube 下載器")
 root.geometry(f"400x270+{int(root.winfo_screenwidth()/2*1.3)}+100")
 root.iconbitmap('music.ico')
+root.wm_attributes("-topmost", 1)       # 設置窗口為最上層
 custom_font = tkFont.Font(family="DFKai-SB", size=int(12), weight="bold")
 # -------------------------------------------------------------------------------------------
 
