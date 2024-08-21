@@ -64,9 +64,9 @@ def get_ydl_opts(output_path, dir_name, format) :
         }
 
 def download_video(url, format) :
+    dir_name = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H-%M-%S')    # 以時間作為資料夾名稱
+    output_path = path_entry.get()
     try :
-        dir_name = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H-%M-%S')    # 以時間作為資料夾名稱
-        output_path = path_entry.get()
         os.makedirs(f"{output_path}/{dir_name}", exist_ok=True)
         ydl_opts = get_ydl_opts(output_path, dir_name, format)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl :
@@ -81,8 +81,11 @@ def download_video(url, format) :
                 shutil.move(f"{output_path}/{dir_name}/{filename}", f"{output_path}/{filename}")
             shutil.rmtree(f"{output_path}/{dir_name}")
             result_label.config(text="下載成功")
+            open_button.place(x=350, y=245, anchor="center", height=40)
     except Exception as exception :
         result_label.config(text="下載失敗")
+        if os.path.exists(f"{output_path}/{dir_name}") :        # 回收資料夾
+            shutil.rmtree(f"{output_path}/{dir_name}")
 
 def on_select_directory() :
     # 打開文件夾選擇對話框
@@ -95,15 +98,16 @@ def on_select_directory() :
             file.write(directory)
 
 def on_download_button_click() :
+    open_button.place_forget()        # 隱藏開啟按鈕
     url = url_entry.get()
     format = format_var.get()
     if url :
         result_label.config(text="下載中...")
-        # 使用執行緒執行下載任務
         download_thread = threading.Thread(target=download_video, args=(url, format))
         download_thread.start()
-    else :
-        messagebox.showwarning("輸入錯誤", "請輸入 YouTube 網址")
+
+def on_open_button_click() :
+    os.startfile(path_entry.get())
 
 # init
 root = tk.Tk()
@@ -153,6 +157,11 @@ download_button.place(x=250, y=200, anchor="center", height=40)
 # result
 result_label = tk.Label(root, text="", font=custom_font)
 result_label.place(x=200, y=245, anchor="center")
+# -------------------------------------------------------------------------------------------
+
+# open
+open_button = tk.Button(root, text="開啟", command=on_open_button_click, font=custom_font)
+open_button.place_forget()
 # -------------------------------------------------------------------------------------------
 
 # mainloop
