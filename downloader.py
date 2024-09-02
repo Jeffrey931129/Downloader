@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import messagebox, filedialog
 import tkinter.font as tkFont
 from pydub import AudioSegment
+import customtkinter as ctk
 
 # 設置 DPI 感知
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
