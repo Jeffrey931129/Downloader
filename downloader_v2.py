@@ -9,16 +9,20 @@ import threading
 import customtkinter as ctk
 from tkinter import messagebox, filedialog
 from pydub import AudioSegment
+from functools import partial
 
 # 設置 DPI 感知
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
 scale_factor = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
 cookie_file = "cookie.txt"          # ?
+task = 0
+result_labels = []
+open_buttons = []
 if not os.path.exists("C:/ffmpeg") :
     shutil.copytree("ffmpeg", "C:/ffmpeg")
 
 # 更新進度的回調函數
-def progress_hook(d) :
+def progress_hook(d, result_label) :
     if d['status'] == 'downloading' :
         # with open("test.txt", 'a') as file :          # Debug
         #     json.dump(d, file, indent=4)
@@ -30,13 +34,14 @@ def progress_hook(d) :
         elif total_fragment :
             result_label.configure(text=f"下載進度 : {(d['fragment_index'] / total_fragment * 100):.2f}%")
 
-def get_ydl_opts(dir_name, format) :
+def get_ydl_opts(dir_name, format, result_label) :
+    # 動態綁定 result_label 給 progress_hook
+    hook = partial(progress_hook, result_label=result_label)
     if format == ' mp3 ' :
         return {
             'format' : 'bestaudio[ext=m4a]/bestaudio',
             'outtmpl' : f'{dir_name}/%(title)s.%(ext)s',
-            # 'ffmpeg_location': 'ffmpeg/bin/ffmpeg.exe',
-            # 'cookiefile': cookie_file,            # 需要時看看他的錯誤訊息，然後依此偵測抓取新的 cookie (for future)
+            'cookiefile': cookie_file,            # 猜測是使用 vpn 才會出現
             'http_headers' : {
                 'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             },
@@ -45,14 +50,13 @@ def get_ydl_opts(dir_name, format) :
                 'preferredcodec' : format,
                 'preferredquality' : '192',
             }],
-            'progress_hooks' : [progress_hook]
+            'progress_hooks' : [hook]
         }
     else :
         return {
             'format' : 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]',  
             'outtmpl' : f'{dir_name}/%(title)s.%(ext)s',
-            # 'ffmpeg_location' : 'ffmpeg/bin/ffmpeg.exe',
-            # 'cookiefile': cookie_file,
+            'cookiefile': cookie_file,
             'http_headers' : {
                 'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             },
@@ -60,15 +64,16 @@ def get_ydl_opts(dir_name, format) :
                 'key' : 'FFmpegVideoConvertor',
                 'preferedformat' : 'mp4',  
             }],
-            'progress_hooks': [progress_hook]
+            'progress_hooks': [hook]
         }
 
-def download_video(url, format) :
+def download_video(url, format, result_label, open_button, task) :
+    global result_labels, open_buttons
     dir_name = datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H-%M-%S')    # 以時間作為資料夾名稱
     output_path = path_entry.get()
     try :
         os.makedirs(f"{dir_name}", exist_ok=True)
-        ydl_opts = get_ydl_opts(dir_name, format)
+        ydl_opts = get_ydl_opts(dir_name, format, result_label)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl :
             ydl.download([url])
             result_label.configure(text="處理中...")
@@ -77,7 +82,9 @@ def download_video(url, format) :
                 shutil.move(f"{dir_name}/{filename}", f"{output_path}/{filename}")
             shutil.rmtree(f"{dir_name}")
             result_label.configure(text="下載成功")
-            open_button.place(x=350, y=245, anchor="center")
+            open_button.place(x=350, y=220+50*task, anchor="center")
+            result_labels.append(result_label)
+            open_buttons.append(open_button)
     except Exception as exception :
         result_label.configure(text="下載失敗")
         if os.path.exists(f"{dir_name}") :        # 回收資料夾
@@ -93,17 +100,34 @@ def on_select_directory() :
         with open("output_path.txt", 'w') as file :
             file.write(directory)
 
-def on_download_button_click():
+def on_open_button_click() :
+    os.startfile(path_entry.get())
+
+def on_download_button_click() :
+    global task
+    task += 1
+    root.geometry(f"400x{250+task*50}+{int(root.winfo_screenwidth()/2*1.3)}+100")
+    result_label = ctk.CTkLabel(root, text="", font=custom_font)
+    result_label.place(x=200, y=220+50*task, anchor="center")
+    open_button = ctk.CTkButton(root, text="開啟", command=on_open_button_click, font=custom_font, width=40, height=30)
     open_button.place_forget()        # 隱藏開啟按鈕
     url = url_entry.get()
     format = format_var.get()
     if url:
         result_label.configure(text="下載中...")
-        download_thread = threading.Thread(target=download_video, args=(url, format))
+        download_thread = threading.Thread(target=download_video, args=(url, format, result_label, open_button, task))
         download_thread.start()
 
-def on_open_button_click() :
-    os.startfile(path_entry.get())
+def on_clean_button_click() :
+    global task, result_labels, open_buttons
+    task = 0
+    root.geometry(f"400x{250+task*50}+{int(root.winfo_screenwidth()/2*1.3)}+100")
+    for result_label in result_labels :
+        result_label.destroy()
+    for open_button in open_buttons :
+        open_button.destroy()
+    result_labels.clear()
+    open_buttons.clear()
 
 # 初始化主窗口
 ctk.set_appearance_mode("Dark")  # 設置顯示模式
@@ -111,7 +135,7 @@ ctk.set_default_color_theme("blue")  # 設置顏色主題
 
 root = ctk.CTk()  # 使用 CTk 而不是 Tk
 root.title("YouTube 下載器")
-root.geometry(f"400x270+{int(root.winfo_screenwidth()/2*1.3)}+100")
+root.geometry(f"400x{250+task*50}+{int(root.winfo_screenwidth()/2*1.3)}+100")
 root.iconbitmap('music.ico')
 root.wm_attributes("-topmost", 1)  # 設置窗口為最上層
 custom_font = ("DFKai-SB", 16, "bold")
@@ -152,13 +176,9 @@ format_menu.place(x=150, y=200, anchor="center")
 download_button = ctk.CTkButton(root, text="下載", command=on_download_button_click, font=custom_font, width=40, height=30)
 download_button.place(x=250, y=200, anchor="center")
 
-# 結果顯示
-result_label = ctk.CTkLabel(root, text="", font=custom_font)
-result_label.place(x=200, y=245, anchor="center")
-
-# 開啟按鈕
-open_button = ctk.CTkButton(root, text="開啟", command=on_open_button_click, font=custom_font, width=40, height=30)
-open_button.place_forget()
+# 下載按鈕
+clean_button = ctk.CTkButton(root, text="清空", command=on_clean_button_click, font=custom_font, width=40, height=30)
+clean_button.place(x=350, y=200, anchor="center")
 
 # 主循環
 root.mainloop()
