@@ -14,7 +14,7 @@ from functools import partial
 # 設置 DPI 感知
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
 scale_factor = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
-cookie_file = "cookie.txt"          # ?
+cookie_file = "cookies.txt"          # ?
 task = 0
 result_labels = []
 open_buttons = []

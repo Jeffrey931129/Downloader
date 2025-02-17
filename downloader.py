@@ -15,7 +15,7 @@ import customtkinter as ctk
 # 設置 DPI 感知
 ctypes.windll.shcore.SetProcessDpiAwareness(1)
 scale_factor = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100
-cookie_file = "cookie.txt"          # ?
+cookie_file = "cookies.txt"          # ?
 
 # 更新進度的回調函數
 def progress_hook(d) :
